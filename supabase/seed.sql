@@ -1,4 +1,4 @@
--- seed.sql — খাত, উপ খাত ও ফ্ল্যাট (schema.sql চালানোর পরে Run করুন)
+-- seed.sql — খাত, উপ খাত ও ৪০টি ফ্ল্যাট (schema.sql চালানোর পরে Run করুন)
 
 insert into categories(kind,name,sort_order,is_service_charge) values ('income','মাসিক সার্ভিস চার্জ',1,true);
 insert into categories(kind,name,parent_id,sort_order) select 'income','ফ্ল্যাটের সার্ভিস চার্জ',id,1 from categories where kind='income' and name='মাসিক সার্ভিস চার্জ' and parent_id is null;
