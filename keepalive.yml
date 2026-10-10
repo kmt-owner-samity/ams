@@ -1,0 +1,30 @@
+# Supabase ফ্রি প্রজেক্ট ৭ দিন নিষ্ক্রিয় থাকলে পজ হয়ে যায়।
+# এই workflow সপ্তাহে দুইবার (সোম ও বৃহস্পতিবার) প্রজেক্টে একটি ছোট অনুরোধ পাঠায়, যাতে প্রজেক্ট সচল থাকে।
+# সেটআপ: GitHub repo → Settings → Secrets and variables → Actions → New repository secret
+#   SUPABASE_URL = https://xxxx.supabase.co          (Project URL)
+#   SUPABASE_KEY = sb_publishable_...                 (Publishable key; secret key নয়)
+name: Supabase keep-alive
+
+on:
+  schedule:
+    - cron: '17 3 * * 1,4'     # প্রতি সোম ও বৃহস্পতিবার, UTC ০৩:১৭ (বাংলাদেশ সময় সকাল ০৯:১৭)
+  workflow_dispatch: {}         # Actions ট্যাব থেকে হাতে চালানোর জন্য
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          set -u
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
+            echo "SUPABASE_URL / SUPABASE_KEY secret সেট করা নেই"; exit 1
+          fi
+          code=$(curl -sS -o /tmp/out.txt -w '%{http_code}' -X POST "$SUPABASE_URL/rest/v1/rpc/ping" \
+                 -H "apikey: $SUPABASE_KEY" -H "Content-Type: application/json" -d '{}')
+          echo "HTTP $code"; cat /tmp/out.txt; echo
+          # ২০০ না হলে workflow ব্যর্থ হবে এবং GitHub আপনাকে ইমেইলে জানাবে (যেমন প্রজেক্ট পজ হলে)
+          test "$code" = "200"
