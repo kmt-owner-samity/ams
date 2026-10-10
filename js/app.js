@@ -6,7 +6,8 @@ const bd=n=>String(n).replace(/\d/g,d=>'০১২৩৪৫৬৭৮৯'[d]);
 const bnDate=s=>{const[y,m,d]=s.split('-');return bd(d+'-'+m+'-'+y.slice(2))+' ইং'};
 let type='income',all=[],open0={cash:0,nbl:0,pbl:0},scCfg={def:0,per:{}};
 
-function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),1800)}
+function toast(m,err){const t=$('toast');t.textContent=m;t.classList.toggle('err',!!err);t.classList.add('on');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('on'),err?9000:2200)}
+function dbFail(e){toast((e&&e.message)||'অজানা ত্রুটি',true);if(e&&e.status===401)showLogin('আবার লগইন করুন।',true)}
 
 /* ট্যাব */
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
@@ -35,7 +36,7 @@ function setSel(arr){sel=new Set(arr);const cur=curYM();
  $('smTrack').innerHTML=monthList(arr).map(ym=>`<button type="button" class="mc${sel.has(ym)?' on':''}${ym>cur?' adv':''}" data-ym="${ym}">${ymEn(ym)}</button>`).join('');focusSel()}
 $('smTrack').addEventListener('click',e=>{const b=e.target.closest('.mc');if(!b)return;const ym=b.dataset.ym;
  if(sel.has(ym)){if(sel.size>1)sel.delete(ym);else return toast('কমপক্ষে একটি মাস বাছাই থাকতে হবে')}else sel.add(ym);
- b.classList.toggle('on',sel.has(ym));autoAmt()});
+ b.classList.toggle('on',sel.has(ym));if(editId)delete $('a').dataset.man;autoAmt()});
 $('smL').onclick=()=>$('smTrack').scrollBy({left:-200,behavior:'smooth'});
 $('smR').onclick=()=>$('smTrack').scrollBy({left:200,behavior:'smooth'});
 function autoAmt(){if($('flatBox').hidden||$('a').dataset.man||!$('fl').value)return;const e=expAmt($('fl').value);if(e>0)$('a').value=Math.round(e*sel.size*100)/100}
@@ -59,7 +60,7 @@ function setSub(){
 }
 function updSc(){const sc=type==='income'&&$('g').value==='মাসিক সার্ভিস চার্জ'&&$('s').value==='ফ্ল্যাটের সার্ভিস চার্জ';$('flatBox').hidden=$('smBox').hidden=!sc;$('fl').required=sc;showOwner();if(sc)focusSel()}
 $('g').onchange=setSub;$('s').onchange=updSc;
-$('fl').innerHTML='<option value="">ফ্ল্যাট বাছাই করুন</option>'+FLATS.map(x=>`<option>${x.f}</option>`).join('');$('fl').onchange=showOwner;
+$('fl').innerHTML='<option value="">ফ্ল্যাট বাছাই করুন</option>'+FLATS.map(x=>`<option>${x.f}</option>`).join('');$('fl').onchange=()=>{if(editId)delete $('a').dataset.man;showOwner()};
 $('save').onclick=async()=>{
  const f=$('f'),iso=getISO();
  $('d').setCustomValidity(iso?'':'সঠিক তারিখ দিন (দিন/মাস/বছর)');
@@ -67,9 +68,10 @@ $('save').onclick=async()=>{
  const t={type,date:iso,amount:+$('a').value,note:$('n').value.trim(),group:$('g').value,item:$('s').value,acct:document.querySelector('[name=acct]:checked').value};
  if(!$('flatBox').hidden){t.flat=$('fl').value;t.owner=ownerOf(t.flat);t.smonths=[...sel].sort()}
  const was=editId;
- if(was){t.id=was;await DB.update(t)}else await DB.add(t);
+ const btn=$('save'),lab=btn.textContent;btn.disabled=true;btn.textContent='Supabase-এ সংরক্ষণ হচ্ছে…';
+ try{if(was){t.id=was;await DB.update(t)}else await DB.add(t)}catch(e){dbFail(e);return}finally{btn.disabled=false;btn.textContent=lab}
  resetForm();setMonth(iso.slice(0,7));
- document.querySelector('nav button[data-v='+(was?'list':'dash')+']').click();toast(was?'হালনাগাদ হয়েছে':'সংরক্ষিত হয়েছে');render();
+ document.querySelector('nav button[data-v='+(was?'list':'dash')+']').click();toast(was?'Supabase-এ হালনাগাদ হয়েছে ✓':'Supabase-এ সংরক্ষিত হয়েছে ✓');render();
 };
 function startEdit(id){const t=all.find(x=>String(x.id)===String(id));if(!t||t.type==='transfer')return;
  document.querySelector('nav button[data-v=add]').click();
@@ -126,10 +128,6 @@ function breakdown(cur,ty,total){
 }
 async function render(){
  all=await DB.list();open0=await DB.opening();scCfg=await DB.sc();
- let dirty=false;
- all.forEach((t,i)=>{if(!t.id){t.id='L'+Date.now()+i;dirty=true}if(!t.acct){t.acct='cash';dirty=true}if(GR[t.group]){t.group=GR[t.group];dirty=true}if(t.flat&&!t.owner){t.owner=ownerOf(t.flat);dirty=true}});
- if(all.some(t=>!t.no)){all.filter(t=>!t.no).sort((a,b)=>(a.date+a.id).localeCompare(b.date+b.id)).forEach(t=>t.no=nextNo(all,t));dirty=true}
- if(dirty)await DB.saveAll(all);
  const c=calc();
  const [cy,cm]=c.m.split('-').map(Number),pm=(cm+10)%12,py=cm===1?cy-1:cy;
  $('eq').innerHTML=`<div><em class="ic" style="--tb:#f1f5f9;--tc:#475569"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 109-9 9 9 0 00-6.7 3M3 4v5h5M12 7v5l3 2"/></svg></em><span>প্রারম্ভিক জের</span><b>${tk(c.pb)}</b></div><div class="i"><em class="ic" style="--tb:var(--in-bg);--tc:var(--in)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12m0 0l-5-5m5 5l5-5M5 20h14"/></svg></em><span>মোট আয়</span><b>${tk(c.I)}</b></div><div class="o"><em class="ic" style="--tb:var(--out-bg);--tc:var(--out)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V8m0 0l-5 5m5-5l5 5M5 4h14"/></svg></em><span>মোট ব্যয়</span><b>${tk(c.O)}</b></div><div class="c"><em class="ic" style="--tb:#e0f2fe;--tc:#0369a1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h13v4M3 7v10a2 2 0 002 2h14a1 1 0 001-1v-9H5a2 2 0 01-2-2zM16 14h2"/></svg></em><span>বর্তমান জের</span><b>${tk(c.cb)}</b></div>`;
@@ -161,31 +159,24 @@ function rowHTML(t){const T=t.type==='transfer',I=t.type==='income';
  return `<tr><td>${bnDate(t.date)}</td><td><span class="badge ${T?'t':I?'i':'o'}">${T?'ট্রান্সফার':I?'আয়':'ব্যয়'}</span></td><td>${esc(t.group)}<br><small style="color:var(--mute)">${subOf(t)}</small></td><td class="n ${T?'tr-c':I?'in-c':'out-c'}">${tk(t.amount)}</td><td class="act">${T?'':ib('inv',t.id,'ইনভয়েস '+bd(t.no||''),ICO.inv)+ib('ed',t.id,'সম্পাদনা',ICO.ed)+ib('del',t.id,'মুছুন',ICO.del)}</td></tr>`}
 async function del(id){
  const v=await ask({title:'এন্ট্রি মুছবেন?',msg:'এই লেনদেনটি স্থায়ীভাবে মুছে যাবে।',ok:'মুছুন'});
- if(v){const n=await DB.remove(id);toast(n?'মুছে ফেলা হয়েছে':'মুছতে ব্যর্থ হয়েছে');render()}
+ if(v){try{await DB.remove(id);toast('Supabase থেকে মুছে ফেলা হয়েছে ✓');render()}catch(e){dbFail(e)}}
 }
-/* অ্যাডমিন পাসওয়ার্ড (শুধু ব্রাউজারে সংরক্ষিত হ্যাশ; এটি আসল নিরাপত্তা নয়, ভুল করে বদলানো ঠেকায়) */
-async function hash(p){const d=new TextEncoder().encode('kmt|'+p);
- if(window.crypto&&crypto.subtle){const b=await crypto.subtle.digest('SHA-256',d);return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
- let h=5381;for(const c of d)h=((h<<5)+h+c)>>>0;return 'x'+h}
-async function setPw(msg){
- for(;;){const v=await ask({title:'অ্যাডমিন পাসওয়ার্ড সেট করুন',msg:msg||'প্রথমবার একটি পাসওয়ার্ড ঠিক করুন এবং মনে রাখুন।',fields:[{ph:'নতুন পাসওয়ার্ড',type:'password'},{ph:'আবার লিখুন',type:'password'}],ok:'সেট করুন'});
-  if(!v)return false;
-  if(v[0].length<4||v[0]!==v[1]){toast('পাসওয়ার্ড কমপক্ষে ৪ অক্ষর ও দুইবার একই হতে হবে');continue}
-  await DB.setAdminHash(await hash(v[0]));toast('পাসওয়ার্ড সংরক্ষিত');return true}}
+/* অ্যাডমিন কাজ: লগইন করা অ্যাকাউন্টের ভূমিকা admin হতে হবে + কাজের আগে পাসওয়ার্ড আবার দিতে হয় */
 async function adminAuth(){
- const h=await DB.adminHash();if(!h)return setPw();
- const v=await ask({title:'অ্যাডমিন পাসওয়ার্ড',fields:[{ph:'পাসওয়ার্ড',type:'password'}],ok:'যাচাই করুন'});
- if(!v)return false;if(await hash(v[0])!==h){toast('পাসওয়ার্ড ভুল');return false}return true}
+ if(!SB.profile||SB.profile.role!=='admin'){toast('শুধু অ্যাডমিন এই কাজ করতে পারবেন',true);return false}
+ const v=await ask({title:'অ্যাডমিন পাসওয়ার্ড',msg:'নিশ্চিত করতে আপনার লগইন পাসওয়ার্ড দিন।',fields:[{ph:'পাসওয়ার্ড',type:'password'}],ok:'যাচাই করুন'});
+ if(!v)return false;
+ try{if(!await SB.verify(v[0])){toast('পাসওয়ার্ড ভুল',true);return false}return true}catch(e){dbFail(e);return false}}
 async function changePw(){
- const h=await DB.adminHash();if(!h){await setPw();return}
+ if(!SB.profile||SB.profile.role!=='admin')return toast('শুধু অ্যাডমিন এই কাজ করতে পারবেন',true);
  const v=await ask({title:'পাসওয়ার্ড পরিবর্তন',fields:[{label:'বর্তমান পাসওয়ার্ড',type:'password'},{label:'নতুন পাসওয়ার্ড',type:'password'},{label:'আবার লিখুন',type:'password'}],ok:'পরিবর্তন করুন'});
- if(!v)return;if(await hash(v[0])!==h)return toast('বর্তমান পাসওয়ার্ড ভুল');
- if(v[1].length<4||v[1]!==v[2])return toast('নতুন পাসওয়ার্ড কমপক্ষে ৪ অক্ষর ও দুইবার একই হতে হবে');
- await DB.setAdminHash(await hash(v[1]));toast('পাসওয়ার্ড পরিবর্তিত হয়েছে')}
-async function adminAct(k){if(k==='pw')return changePw();if(!await adminAuth())return;k==='open'?editOpen():k==='sc'?scSetup():doTransfer()}
+ if(!v)return;
+ if(v[1].length<6||v[1]!==v[2])return toast('নতুন পাসওয়ার্ড কমপক্ষে ৬ অক্ষর ও দুইবার একই হতে হবে',true);
+ try{if(!await SB.verify(v[0]))return toast('বর্তমান পাসওয়ার্ড ভুল',true);await SB.updatePassword(v[1]);toast('পাসওয়ার্ড পরিবর্তিত হয়েছে ✓')}catch(e){dbFail(e)}}
+async function adminAct(k){if(k==='pw')return changePw();if(!await adminAuth())return;k==='open'?editOpen():k==='sc'?scSetup():k==='import'?importLocal():doTransfer()}
 async function editOpen(){
  const n=await ask({title:'প্রারম্ভিক জের সম্পাদনা',fields:ACCTS.map(a=>({label:a.n,type:'number',value:open0[a.k]||'',ph:'৳ পরিমাণ'})),ok:'সংরক্ষণ'});
- if(!n)return;await DB.setOpening({cash:n[0],nbl:n[1],pbl:n[2]});toast('জের হালনাগাদ হয়েছে');render()}
+ if(!n)return;try{await DB.setOpening({cash:n[0],nbl:n[1],pbl:n[2]})}catch(e){return dbFail(e)}toast('Supabase-এ জের হালনাগাদ হয়েছে ✓');render()}
 async function doTransfer(){
  const d=new Date(),opts=ACCTS.map(a=>[a.k,a.n]);let v=['','',String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear(),'',''];
  for(;;){
@@ -194,8 +185,8 @@ async function doTransfer(){
   const r=await pr;if(!r)return;v=r;const iso=parseDMY(r[2]);let err='';
   if(!r[0]||!r[1])err='দুটি হিসাব বাছাই করুন';else if(r[0]===r[1])err='দুটি হিসাব এক হতে পারবে না';else if(!iso)err='সঠিক তারিখ দিন';else if(!(+r[3]>0))err='সঠিক টাকার পরিমাণ দিন';
   if(err){toast(err);continue}
-  await DB.add({type:'transfer',date:iso,amount:+r[3],note:r[4].trim(),group:'ট্রান্সফার',item:AN(r[0])+' → '+AN(r[1]),from:r[0],to:r[1],acct:r[0]});
-  toast('ট্রান্সফার সংরক্ষিত');render();return}}
+  try{await DB.add({type:'transfer',date:iso,amount:+r[3],note:r[4].trim(),group:'ট্রান্সফার',item:AN(r[0])+' → '+AN(r[1]),from:r[0],to:r[1],acct:r[0]})}catch(e){dbFail(e);continue}
+  toast('Supabase-এ ট্রান্সফার সংরক্ষিত ✓');render();return}}
 
 /* CSV রিপোর্ট (বাংলা ঠিক রাখতে BOM সহ) */
 function csv(){
@@ -215,4 +206,29 @@ setMonth(`${Y}-${z(now.getMonth()+1)}`);
 setDateISO(`${now.getFullYear()}-${z(now.getMonth()+1)}-${z(now.getDate())}`);
 $('chips').innerHTML=ACCTS.map(a=>`<label class="chip"><input type="radio" name="acct" value="${a.k}" required><span>${svg(a.d,22)}${a.s}${a.br?`<small>${a.br}</small>`:''}</span></label>`).join('');
 initReports();
-setType();render();
+setType();
+
+/* ===== লগইন ও চালু করা ===== */
+function showLogin(msg,err){$('loginOv').hidden=false;$('loginMsg').textContent=msg||'';$('loginMsg').className=err?'lerr':'';$('lpw').value=''}
+function hideLogin(){$('loginOv').hidden=true}
+function applyRole(){const r=SB.profile.role;document.body.classList.remove('r-admin','r-accountant','r-viewer');document.body.classList.add('r-'+r);
+ $('whoName').textContent=SB.profile.full_name+' ('+({admin:'অ্যাডমিন',accountant:'হিসাবরক্ষক',viewer:'দর্শক'})[r]+')';$('whobar').hidden=false;
+ $('impBtn').hidden=!(r==='admin'&&DB.legacyCount()>0)}
+async function startApp(){hideLogin();toast('Supabase থেকে ডাটা আনা হচ্ছে…');
+ try{await DB.init()}catch(e){showLogin(e.message,true);return}
+ applyRole();toast('Supabase-এর সঙ্গে যুক্ত ✓');render()}
+async function bootApp(){
+ if(!SB.configured()){showLogin('Supabase এখনও যুক্ত করা হয়নি: js/supabase-config.js ফাইলে Project URL ও Publishable key বসান।',true);return}
+ try{if(await SB.restore())await startApp();else showLogin()}catch(e){showLogin(e.message,true)}}
+$('loginForm').addEventListener('submit',async e=>{e.preventDefault();const b=$('loginBtn');b.disabled=true;b.textContent='লগইন হচ্ছে…';
+ try{await SB.login($('lem').value,$('lpw').value);await startApp()}catch(err){showLogin(err.message,true)}b.disabled=false;b.textContent='লগইন'});
+$('btnOut').onclick=async()=>{await SB.logout();location.reload()};
+$('btnRef').onclick=async()=>{try{toast('Supabase থেকে নতুন ডাটা আনা হচ্ছে…');await DB.reload();applyRole();render();toast('ডাটা হালনাগাদ হয়েছে ✓')}catch(e){dbFail(e)}};
+async function importLocal(){const n=DB.legacyCount();
+ const v=await ask({title:'পুরনো ডাটা Supabase-এ আনবেন?',msg:'এই ব্রাউজারে '+bd(n)+'টি লেনদেন পাওয়া গেছে। এগুলো (প্রারম্ভিক জের ও সার্ভিস চার্জ সেটআপসহ) Supabase-এ যোগ হবে। শুধু একবার চালান, নইলে ডাটা দ্বিগুণ হবে।',ok:'Supabase-এ আনুন'});
+ if(!v)return;
+ try{toast('ডাটা আনা হচ্ছে… অপেক্ষা করুন');const r=await DB.importLegacy();render();
+  if(r.fail.length)await ask({title:bd(r.ok)+'টি এসেছে, '+bd(r.fail.length)+'টি আসেনি',msg:r.fail.slice(0,6).join(' | '),ok:'ঠিক আছে'});
+  else{const c=await ask({title:'সব ডাটা Supabase-এ এসেছে ✓',msg:'ব্রাউজারের পুরনো ডাটা মুছে ফেলবেন? (Supabase-এর ডাটা নিরাপদ থাকবে)',ok:'ব্রাউজারের ডাটা মুছুন'});if(c){DB.clearLegacy();applyRole()}}}
+ catch(e){dbFail(e)}}
+bootApp();

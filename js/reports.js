@@ -1,4 +1,5 @@
 /* reports.js — রিপোর্ট বাছাই (চুজার), রিপোর্ট বিল্ডার ও সার্ভিস চার্জ সেটআপ */
+const prevOf=ym=>{const d=new Date(+ym.slice(0,4),+ym.slice(5)-2,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')};
 const expAmt=f=>{const v=scCfg.per&&scCfg.per[f];return(v!==undefined&&v!==''&&v!==null)?+v:(+scCfg.def||0)};
 const monthTitle=ym=>M[+ym.slice(5)-1]+' '+bd(ym.slice(0,4));
 const sumA=l=>l.reduce((s,t)=>s+t.amount,0);
@@ -15,12 +16,11 @@ function paged(title,sub,thead,trs,o={}){const host=$('cap'),H=1123,cls=o.cls?' 
  return pages.map((r,idx)=>{o._first=idx===0;return mk(r,idx===n-1,n).replace('<div class="pgn">পৃষ্ঠা</div>',n>1?`<div class="pgn">পৃষ্ঠা ${bd(idx+1)}/${bd(n)}</div>`:'')})}
 
 /* লেনদেনের লগ */
-function logReport(){const c=calc(),sg=x=>x<0?'− '+tk(-x):'+ '+tk(x),trs=[`<tr class="sm"><td colspan="3">প্রারম্ভিক জের (মাসের শুরুতে)</td><td class="n">${sg(c.pb)}</td></tr>`];
+function logReport(){const c=calc(),trs=[];
  [...c.cur].sort(byDate).forEach(t=>{const inc=t.type==='income',tr=t.type==='transfer';
-  trs.push(`<tr><td>${bnDate(t.date)}</td><td>${tr?'ট্রান্সফার':inc?'আয়':'ব্যয়'}</td><td><b>${esc(t.group)}</b><br><small>${subOf(t)}</small>${t.owner?`<br><b>${esc(t.owner)}</b>`:''}</td><td class="n ${tr?'':inc?'in-c':'out-c'}">${tr?'':inc?'+ ':'− '}${tk(t.amount)}</td></tr>`)});
- trs.push(`<tr class="sm"><td colspan="3" style="text-align:right">মোট আয়</td><td class="n in-c">+ ${tk(c.I)}</td></tr>`,`<tr class="sm"><td colspan="3" style="text-align:right">মোট ব্যয়</td><td class="n out-c">− ${tk(c.O)}</td></tr>`,`<tr class="tot"><td colspan="3" style="text-align:right">বর্তমান জের</td><td class="n">${tk(c.cb)}</td></tr>`);
- c.ac.forEach(a=>trs.push(`<tr class="sm"><td colspan="3" style="text-align:right">— ${esc(a.n)}</td><td class="n">${tk(a.c)}</td></tr>`));
- return paged('হিসাবের বিস্তারিত বিবরণ',monthTitle(c.m),'<tr><th style="width:105px">তারিখ</th><th style="width:70px">ধরণ</th><th>খাত / বিবরণ</th><th class="n" style="width:140px">পরিমাণ</th></tr>',trs)}
+  trs.push(`<tr><td>${bnDate(t.date)}</td><td>${tr?'ট্রান্সফার':inc?'আয়':'ব্যয়'}</td><td>${esc(t.group)}<br><small>${subOf(t)}${t.owner?' · '+esc(t.owner):''}</small></td><td class="n">${tr?'':inc?'+ ':'− '}${tk(t.amount)}</td></tr>`)});
+ if(!trs.length)trs.push('<tr><td colspan="4" class="c">এই মাসে কোনো লেনদেন নেই</td></tr>');
+ return paged('লেনদেনের বিস্তারিত',monthTitle(c.m),'<tr><th style="width:105px">তারিখ</th><th style="width:70px">ধরণ</th><th>খাত / বিবরণ</th><th class="n" style="width:140px">পরিমাণ</th></tr>',trs)}
 
 /* ১) আয় / ব্যয়ের রিপোর্ট: খাত → এন্ট্রি, উপমোটসহ */
 function kindReport(ty){const c=calc(),L=ty==='income',col=L?'#059669':'#dc2626';
@@ -34,7 +34,7 @@ function kindReport(ty){const c=calc(),L=ty==='income',col=L?'#059669':'#dc2626'
  return paged(L?'আয়ের রিপোর্ট':'ব্যয়ের রিপোর্ট',monthTitle(c.m),'<tr><th style="width:105px">তারিখ</th><th>বিবরণ</th><th style="width:125px">হিসাব</th><th class="n" style="width:125px">টাকা</th></tr>',trs,{sizes:[22,28]})}
 
 /* ২) সার্ভিস চার্জ রিপোর্ট (নির্বাচিত মাস): কে পরিশোধ করেছে / করেনি */
-function scMonthReport(){const c=calc(),ym=c.m,pay={};
+function scMonthReport(){const c=calc(),ym=prevOf(c.m),pay={};
  all.filter(t=>t.type==='income'&&t.flat).forEach(t=>{const ms=smList(t);if(!ms.includes(ym))return;const o=pay[t.flat]??={amt:0,last:'',acct:''};o.amt+=t.amount/ms.length;if(t.date>=o.last){o.last=t.date;o.acct=t.acct}});
  let np=0,nh=0,nd=0,col=0,due=0;const hasExp=FLATS.some(x=>expAmt(x.f)>0),LB={p:'পরিশোধিত',h:'আংশিক',d:'বাকি'};
  const trs=FLATS.map((x,i)=>{const p=pay[x.f],e=expAmt(x.f),paid=p?p.amt:0;
@@ -46,13 +46,13 @@ function scMonthReport(){const c=calc(),ym=c.m,pay={};
 
 /* ৩) সার্ভিস চার্জের বার্ষিক ছক: ফ্ল্যাট × ১২ মাস */
 const TICK='<svg class="tk" viewBox="0 0 12 12" width="12" height="12"><path d="M2 6.5l2.6 2.6L10 3.2" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',CROSS='<svg class="tk" viewBox="0 0 12 12" width="12" height="12"><path d="M3 3l6 6M9 3l-6 6" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round"/></svg>';
-function scYearReport(){const c=calc(),y=c.m.slice(0,4),upto=+c.m.slice(5),paid={};
+function scYearReport(){const c=calc(),sm=prevOf(c.m),y=sm.slice(0,4),upto=+sm.slice(5),paid={};
  all.filter(t=>t.type==='income'&&t.flat).forEach(t=>smList(t).forEach(m=>{(paid[t.flat]??=new Set()).add(m)}));
  const trs=FLATS.map((x,i)=>{let due=0;
   const cells=MON.map((_,k)=>{const ym=y+'-'+String(k+1).padStart(2,'0');if(paid[x.f]&&paid[x.f].has(ym))return `<td class="c">${TICK}</td>`;if(k+1<=upto){due++;return `<td class="c">${CROSS}</td>`}return '<td class="c"></td>'});
   return `<tr><td class="c">${bd(i+1)}</td><td>${x.f}</td><td>${esc(x.o)}</td>${cells.join('')}<td class="c"><b>${bd(due)}</b></td></tr>`});
  const th='<tr><th>ক্রঃ</th><th>ফ্ল্যাট</th><th>মালিক</th>'+MON.map(m=>`<th>${m}</th>`).join('')+'<th>বাকি</th></tr>';
- return paged('সার্ভিস চার্জের বার্ষিক ছক',bd(y)+' সাল — '+monthTitle(c.m)+' পর্যন্ত',th,trs,{sizes:[24,24],cls:'mx',post:`<div class="legend">${TICK} পরিশোধিত &nbsp; ${CROSS} বাকি (নির্বাচিত মাস পর্যন্ত) &nbsp; ফাঁকা = ভবিষ্যৎ মাস</div>`})}
+ return paged('সার্ভিস চার্জের বার্ষিক ছক',bd(y)+' সাল — '+monthTitle(sm)+' পর্যন্ত',th,trs,{sizes:[24,24],cls:'mx',post:`<div class="legend">${TICK} পরিশোধিত &nbsp; ${CROSS} বাকি (নির্বাচিত মাস পর্যন্ত) &nbsp; ফাঁকা = ভবিষ্যৎ মাস</div>`})}
 
 /* ৪) অ্যাকাউন্ট স্টেটমেন্ট: নগদ / ন্যাশনাল / পূবালী, চলমান জেরসহ */
 function acctReport(){const c=calc(),out=[];
@@ -74,15 +74,13 @@ function yearReport(){const c=calc(),y=c.m.slice(0,4),t0=ACCTS.reduce((s,a)=>s+o
   TI+=i;TO+=o;if(first===null)first=p;last=p+i-o;return `<tr><td>${nm}</td><td class="n">${tk(p)}</td><td class="n in-c">${tk(i)}</td><td class="n out-c">${tk(o)}</td><td class="n"><b>${tk(p+i-o)}</b></td></tr>`});
  const yr=all.filter(t=>t.date.slice(0,4)===y);
  const grp=ty=>{const g={};yr.filter(t=>t.type===ty).forEach(t=>g[t.group]=(g[t.group]||0)+t.amount);return Object.entries(g).sort((a,b)=>b[1]-a[1])};
- const tbl=(title,rs,total,col)=>`<h3 class="sh">${title}</h3><table class="at"><thead><tr><th style="width:70px">ক্রঃ নং</th><th>মূল খাত</th><th class="n" style="width:170px">টাকা</th></tr></thead><tbody>${rs.length?rs.map(([k,v],i)=>`<tr><td class="c">${bd(i+1)}</td><td>${esc(k)}</td><td class="n">${tk(v)}</td></tr>`).join(''):'<tr><td colspan="3" class="c">কোনো এন্ট্রি নেই</td></tr>'}<tr class="tot"><td colspan="2" style="text-align:right">মোট</td><td class="n" style="color:${col}">${tk(total)}</td></tr></tbody></table>`;
+ const tbl=(title,rs,total,col)=>`<h3 class="sh">${title}</h3><table class="at"><thead><tr><th style="width:70px">ক্রঃ নং</th><th>মূল খাত</th><th class="n" style="width:170px">টাকা</th></tr></thead><tbody>${rs.length?rs.map(([k,v],i)=>`<tr><td class="c">${bd(i+1)}</td><td>${esc(k)}</td><td class="n">${tk(v)}</td></tr>`).join(''):'<tr><td colspan="3" class="c">কোনো এন্ট্রি নেই</td></tr>'}<tr class="tot"><td colspan="2" style="text-align:right">মোট</td><td class="n">${tk(total)}</td></tr></tbody></table>`;
  const trn=(l,k)=>l.filter(t=>t.type==='transfer').reduce((s,t)=>s+(t.to===k?t.amount:0)-(t.from===k?t.amount:0),0),sk=(l,ty,k)=>l.filter(t=>t.type===ty&&t.acct===k).reduce((s,t)=>s+t.amount,0),pre=all.filter(t=>t.date.slice(0,4)<y);
  const acs=ACCTS.map(a=>{const p=open0[a.k]+sk(pre,'income',a.k)-sk(pre,'expense',a.k)+trn(pre,a.k),i=sk(yr,'income',a.k),o=sk(yr,'expense',a.k),x=trn(yr,a.k);return{a,p,i,o,x,c:p+i-o+x}});
  const sg=v=>v<0?'− '+tk(-v):v>0?'+ '+tk(v):tk(0);
- const bank=`<h3 class="sh">জেরের সামারি</h3><table class="at" style="font-size:13px"><thead><tr><th>হিসাব</th><th class="n">বছরের শুরুর জের</th><th class="n">আয়</th><th class="n">ব্যয়</th><th class="n">ট্রান্সফার (নিট)</th><th class="n">বছরের শেষের জের</th></tr></thead><tbody>${acs.map(z=>`<tr><td>${z.a.t}</td><td class="n">${tk(z.p)}</td><td class="n in-c">${tk(z.i)}</td><td class="n out-c">${tk(z.o)}</td><td class="n">${sg(z.x)}</td><td class="n"><b>${tk(z.c)}</b></td></tr>`).join('')}<tr class="tot"><td style="text-align:right">মোট</td><td class="n">${tk(acs.reduce((s,z)=>s+z.p,0))}</td><td class="n">${tk(TI)}</td><td class="n">${tk(TO)}</td><td class="n">${tk(0)}</td><td class="n">${tk(acs.reduce((s,z)=>s+z.c,0))}</td></tr></tbody></table>`;
+ const bank=`<h3 class="sh">জেরের সামারি</h3><table class="at" style="font-size:13px"><thead><tr><th>হিসাব</th><th class="n">বছরের শুরুর জের</th><th class="n">আয়</th><th class="n">ব্যয়</th><th class="n">ট্রান্সফার (নিট)</th><th class="n">বছরের শেষের জের</th></tr></thead><tbody>${acs.map(z=>`<tr><td>${z.a.t}</td><td class="n">${tk(z.p)}</td><td class="n">${tk(z.i)}</td><td class="n">${tk(z.o)}</td><td class="n">${sg(z.x)}</td><td class="n"><b>${tk(z.c)}</b></td></tr>`).join('')}<tr class="tot"><td style="text-align:right">মোট</td><td class="n">${tk(acs.reduce((s,z)=>s+z.p,0))}</td><td class="n">${tk(TI)}</td><td class="n">${tk(TO)}</td><td class="n">${tk(0)}</td><td class="n">${tk(acs.reduce((s,z)=>s+z.c,0))}</td></tr></tbody></table>`;
  const ft='<div class="ft">এটি কম্পিউটার সিস্টেম দ্বারা প্রস্তুতকৃত।</div>';
- return [`<div class="a4 tight">${head()}<div class="mt">${bd(y)} সাল</div><h3 class="sh">বার্ষিক রিপোর্ট — মাসওয়ারি</h3>
- <table class="at"><thead><tr><th>মাস</th><th class="n">প্রারম্ভিক জের</th><th class="n">আয়</th><th class="n">ব্যয়</th><th class="n">বর্তমান জের</th></tr></thead><tbody>${rows.join('')}<tr class="tot"><td>বছরের মোট</td><td class="n">${tk(first||0)}</td><td class="n" style="color:#059669">${tk(TI)}</td><td class="n" style="color:#dc2626">${tk(TO)}</td><td class="n">${tk(last)}</td></tr></tbody></table>${ft}</div>`,
- `<div class="a4 tight">${head()}<div class="mt">${bd(y)} সাল</div><h3 class="sh">বার্ষিক রিপোর্ট — খাতভিত্তিক</h3>${tbl('আয়ের সামারি',grp('income'),TI,'#059669')}${tbl('ব্যয়ের সামারি',grp('expense'),TO,'#dc2626')}${bank}${ft}</div>`]}
+ return [`<div class="a4 tight">${head()}<div class="mt">${bd(y)} সাল</div><h3 class="sh">বার্ষিক রিপোর্ট</h3>${tbl('আয়ের সামারি',grp('income'),TI,'#059669')}${tbl('ব্যয়ের সামারি',grp('expense'),TO,'#dc2626')}${bank}${ft}</div>`]}
 
 /* লেনদেন পেজের রিপোর্ট বাটন */
 const REPS=[
@@ -95,10 +93,11 @@ const REPS=[
 /* সার্ভিস চার্জ সেটআপ (অ্যাডমিন) */
 function scTot(){const d=+$('scDef').value||0;let t=0;document.querySelectorAll('#scRows input').forEach(i=>{t+=i.value!==''?+i.value:d});$('scTot').textContent='মোট মাসিক প্রত্যাশিত আদায়: '+tk(t)}
 function scSetup(){$('scDef').value=scCfg.def||'';
- $('scRows').innerHTML=FLATS.map(x=>`<label class="scr"><span><b>${x.f}</b> <small>${esc(x.o)}</small></span><input type="number" min="0" step="any" data-f="${x.f}" placeholder="ডিফল্ট" value="${scCfg.per&&scCfg.per[x.f]!==undefined?scCfg.per[x.f]:''}"></label>`).join('');
+ $('scRows').innerHTML=FLATS.map(x=>`<label class="scr"><span>${x.f} (${esc(x.o)})</span><input type="number" min="0" step="any" data-f="${x.f}" placeholder="ডিফল্ট" value="${scCfg.per&&scCfg.per[x.f]!==undefined?scCfg.per[x.f]:''}"></label>`).join('');
  scTot();$('scOv').hidden=false;document.querySelector('#scOv .invbox').scrollTop=0}
 async function scSave(){const per={};document.querySelectorAll('#scRows input').forEach(i=>{if(i.value!=='')per[i.dataset.f]=+i.value});
- scCfg={def:+$('scDef').value||0,per};await DB.setSc(scCfg);$('scOv').hidden=true;toast('সার্ভিস চার্জ সেটআপ সংরক্ষিত');render()}
+ try{await DB.setSc({def:+$('scDef').value||0,per})}catch(e){return dbFail(e)}
+ scCfg=await DB.sc();$('scOv').hidden=true;toast('Supabase-এ সার্ভিস চার্জ সেটআপ সংরক্ষিত ✓');render()}
 function initReports(){
  $('repBar').innerHTML=REPS.map((r,i)=>`<button type="button" class="rbtn" data-i="${i}"><em style="background:${r.b};color:${r.c}">${svg('<path d="'+r.i+'"/>',18)}</em>${r.t}</button>`).join('');
  $('repBar').addEventListener('click',e=>{const b=e.target.closest('.rbtn');if(!b)return;const r=REPS[+b.dataset.i];openPrev(r.f(),r.k+'-'+$('month').value+'.pdf')});
